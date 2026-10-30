@@ -1,0 +1,6 @@
+{
+  "name": "SwasthyaSaathi",
+  "description": "Offline-first health companion for frontline workers with multi-language support, ID and password sign-in, protocol guidance, emergency danger signs, and visit planning.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Outer Shield / Circle Glow -->
+    <path
+        android:fillColor="#1AFFFFFF"
+        android:pathData="M54,20 C35.2,20 20,35.2 20,54 C20,72.8 35.2,88 54,88 C72.8,88 88,72.8 88,54 C88,35.2 72.8,20 54,20 Z" />
+    
+    <!-- Bold Health Cross -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M48,30 C48,27.8 49.8,26 52,26 L56,26 C58.2,26 60,27.8 60,30 L60,48 L78,48 C80.2,48 82,49.8 82,52 L82,56 C82,58.2 80.2,60 78,60 L60,60 L60,78 C60,80.2 58.2,82 56,82 L52,82 C49.8,82 48,80.2 48,78 L48,60 L30,60 C27.8,60 26,58.2 26,56 L26,52 C26,49.8 27.8,48 30,48 L48,48 Z" />
+
+    <!-- Central Accent Heart / Leaf in Teal Mint -->
+    <path
+        android:fillColor="#00695C"
+        android:pathData="M54,61 C53.4,61 49.5,57.5 47.5,54.8 C45.5,52.2 45,50 45,48.5 C45,45.8 47.1,44 49.6,44 C51.3,44 52.9,45 54,46.3 C55.1,45 56.7,44 58.4,44 C60.9,44 63,45.8 63,48.5 C63,50 62.5,52.2 60.5,54.8 C58.5,57.5 54.6,61 54,61 Z" />
+</vector>
