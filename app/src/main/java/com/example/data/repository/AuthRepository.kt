@@ -25,7 +25,8 @@ class AuthRepository(context: Context) {
             val name = prefs.getString("worker_name", "Anita Sharma") ?: "Anita Sharma"
             val email = prefs.getString("worker_email", "asha.anita@chandrapuri.health") ?: "asha.anita@chandrapuri.health"
             val village = prefs.getString("worker_village", "Amrapur") ?: "Amrapur"
-            val user = WorkerUser(id, name, email, "ASHA Worker", village)
+            val role = prefs.getString("worker_role", "ASHA Worker") ?: "ASHA Worker"
+            val user = WorkerUser(id, name, email, role, village)
             _currentUser.value = user
             _isLoggedIn.value = true
         }
@@ -53,35 +54,145 @@ class AuthRepository(context: Context) {
         fun isValidEmailOrId(input: String): Boolean {
             val trimmed = input.trim()
             if (trimmed.isEmpty()) return false
-            // Matches worker ID format (e.g. ASHA-101, ANM-202)
-            if (Regex("^[A-Za-z]{3,5}-\\d{3,5}$").matches(trimmed)) return true
+            // Matches worker ID format (e.g. ASHA-101, ANM-202, SB-1234)
+            if (Regex("^[A-Za-z]{2,8}-\\d{2,8}$").matches(trimmed)) return true
             // Matches standard email format
+            return Regex("^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$").matches(trimmed)
+        }
+
+        fun isValidEmail(email: String): Boolean {
+            val trimmed = email.trim()
             return Regex("^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$").matches(trimmed)
         }
     }
 
     fun calculatePasswordStrength(password: String): PasswordStrength = Companion.calculatePasswordStrength(password)
     fun isValidEmailOrId(input: String): Boolean = Companion.isValidEmailOrId(input)
+    fun isValidEmail(email: String): Boolean = Companion.isValidEmail(email)
 
-    fun signIn(idOrEmail: String, password: String, rememberMe: Boolean = true): Result<WorkerUser> {
-        val trimmed = idOrEmail.trim()
-        if (!isValidEmailOrId(trimmed)) {
-            return Result.failure(IllegalArgumentException("Invalid email format or Worker ID"))
+    suspend fun signUp(
+        email: String,
+        password: String,
+        fullName: String,
+        role: String,
+        village: String,
+        rememberMe: Boolean = true
+    ): Result<WorkerUser> = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        val trimmedEmail = email.trim()
+        val trimmedName = fullName.trim()
+        if (trimmedName.isEmpty()) {
+            return@withContext Result.failure(IllegalArgumentException("Please enter your full name"))
+        }
+        if (!isValidEmail(trimmedEmail)) {
+            return@withContext Result.failure(IllegalArgumentException("Please enter a valid email address"))
         }
         if (password.length < 6) {
-            return Result.failure(IllegalArgumentException("Password must be at least 6 characters"))
+            return@withContext Result.failure(IllegalArgumentException("Password must be at least 6 characters"))
         }
 
-        // Match against known demo workers or allow valid health ID
-        val matched = SyntheticData.demoWorkers.find {
-            it.email.equals(trimmed, ignoreCase = true) || it.id.equals(trimmed, ignoreCase = true)
-        } ?: WorkerUser(
-            id = if (trimmed.contains("@")) "WORKER-" + trimmed.substringBefore("@").take(6).uppercase() else trimmed.uppercase(),
-            name = if (trimmed.contains("@")) trimmed.substringBefore("@").replace(".", " ").capitalizeWords() else "Health Worker $trimmed",
-            email = if (trimmed.contains("@")) trimmed else "$trimmed@chandrapuri.health",
-            role = "Frontline Health Worker",
-            assignedVillage = "Amrapur"
+        // 1. Attempt Supabase GoTrue Auth Sign Up
+        val supabaseResult = com.example.data.supabase.SupabaseClient.signUpWithSupabase(
+            email = trimmedEmail,
+            pass = password,
+            fullName = trimmedName,
+            role = role,
+            village = village
         )
+
+        // If duplicate user or explicit rejection from Supabase (not an offline network failure)
+        if (!supabaseResult.isSuccess && !supabaseResult.isOfflineOrNetworkError) {
+            val errMsg = supabaseResult.message ?: "Sign up failed on Supabase backend"
+            return@withContext Result.failure(IllegalArgumentException(errMsg))
+        }
+
+        val generatedId = if (supabaseResult.isSuccess && !supabaseResult.userId.isNullOrEmpty()) {
+            "SB-" + supabaseResult.userId.take(6).uppercase()
+        } else {
+            "WORKER-" + trimmedEmail.substringBefore("@").take(6).uppercase()
+        }
+
+        val newUser = WorkerUser(
+            id = generatedId,
+            name = trimmedName,
+            email = trimmedEmail,
+            role = role,
+            assignedVillage = if (village.isBlank()) "Chandrapuri" else village
+        )
+
+        // Cache registered credentials locally for offline continuity
+        saveRegisteredUserLocally(newUser, password)
+
+        if (rememberMe) {
+            prefs.edit()
+                .putBoolean("is_logged_in", true)
+                .putString("worker_id", newUser.id)
+                .putString("worker_name", newUser.name)
+                .putString("worker_email", newUser.email)
+                .putString("worker_village", newUser.assignedVillage)
+                .putString("worker_role", newUser.role)
+                .apply()
+        }
+
+        _currentUser.value = newUser
+        _isLoggedIn.value = true
+        Result.success(newUser)
+    }
+
+    suspend fun signIn(idOrEmail: String, password: String, rememberMe: Boolean = true): Result<WorkerUser> = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        val trimmed = idOrEmail.trim()
+        if (!isValidEmailOrId(trimmed)) {
+            return@withContext Result.failure(IllegalArgumentException("Invalid email format or Worker ID"))
+        }
+        if (password.length < 6) {
+            return@withContext Result.failure(IllegalArgumentException("Password must be at least 6 characters"))
+        }
+
+        // Check local registered users first
+        val localRegistered = getLocalRegisteredUser(trimmed)
+
+        // 1. Attempt Supabase GoTrue Auth if input is an email
+        var supabaseAuthSuccess = false
+        var supabaseUserName: String? = null
+        var supabaseUserRole: String? = null
+        var supabaseUserVillage: String? = null
+
+        if (trimmed.contains("@")) {
+            val sbResult = com.example.data.supabase.SupabaseClient.signInWithSupabase(trimmed, password)
+            if (sbResult.isSuccess) {
+                supabaseAuthSuccess = true
+                supabaseUserName = sbResult.fullName
+                supabaseUserRole = sbResult.role
+                supabaseUserVillage = sbResult.village
+            } else if (!sbResult.isOfflineOrNetworkError) {
+                // If Supabase returned 400 invalid credentials, check if it's a known demo worker
+                val isDemo = SyntheticData.demoWorkers.any { it.email.equals(trimmed, ignoreCase = true) }
+                val isLocalValid = localRegistered != null && localRegistered.second == password
+                if (!isDemo && !isLocalValid) {
+                    return@withContext Result.failure(IllegalArgumentException(sbResult.message ?: "Invalid email or password"))
+                }
+            }
+        }
+
+        // Match against Supabase profile, local registered cache, demo workers, or fallback
+        val matched = when {
+            supabaseAuthSuccess -> WorkerUser(
+                id = "SB-" + trimmed.substringBefore("@").take(6).uppercase(),
+                name = supabaseUserName ?: localRegistered?.first?.name ?: trimmed.substringBefore("@").replace(".", " ").capitalizeWords(),
+                email = trimmed,
+                role = supabaseUserRole ?: localRegistered?.first?.role ?: "Frontline Health Worker",
+                assignedVillage = supabaseUserVillage ?: localRegistered?.first?.assignedVillage ?: "Amrapur"
+            )
+            localRegistered != null -> localRegistered.first
+            else -> SyntheticData.demoWorkers.find {
+                it.email.equals(trimmed, ignoreCase = true) || it.id.equals(trimmed, ignoreCase = true)
+            } ?: WorkerUser(
+                id = if (trimmed.contains("@")) "WORKER-" + trimmed.substringBefore("@").take(6).uppercase() else trimmed.uppercase(),
+                name = if (trimmed.contains("@")) trimmed.substringBefore("@").replace(".", " ").capitalizeWords() else "Health Worker $trimmed",
+                email = if (trimmed.contains("@")) trimmed else "$trimmed@chandrapuri.health",
+                role = "Frontline Health Worker",
+                assignedVillage = "Amrapur"
+            )
+        }
 
         if (rememberMe) {
             prefs.edit()
@@ -90,18 +201,54 @@ class AuthRepository(context: Context) {
                 .putString("worker_name", matched.name)
                 .putString("worker_email", matched.email)
                 .putString("worker_village", matched.assignedVillage)
+                .putString("worker_role", matched.role)
                 .apply()
         }
 
         _currentUser.value = matched
         _isLoggedIn.value = true
-        return Result.success(matched)
+        Result.success(matched)
     }
 
     fun signOut() {
-        prefs.edit().clear().apply()
+        prefs.edit()
+            .putBoolean("is_logged_in", false)
+            .remove("worker_id")
+            .remove("worker_name")
+            .remove("worker_email")
+            .remove("worker_village")
+            .remove("worker_role")
+            .apply()
         _currentUser.value = null
         _isLoggedIn.value = false
+    }
+
+    private fun saveRegisteredUserLocally(user: WorkerUser, pass: String) {
+        val existing = prefs.getString("registered_accounts", "") ?: ""
+        val entry = "${user.id}|${user.email}|${user.name}|${user.role}|${user.assignedVillage}|$pass"
+        val updated = if (existing.isEmpty()) entry else "$existing;;$entry"
+        prefs.edit().putString("registered_accounts", updated).apply()
+    }
+
+    private fun getLocalRegisteredUser(emailOrId: String): Pair<WorkerUser, String>? {
+        val existing = prefs.getString("registered_accounts", "") ?: ""
+        if (existing.isEmpty()) return null
+        val entries = existing.split(";;")
+        for (item in entries) {
+            val parts = item.split("|")
+            if (parts.size >= 6) {
+                val id = parts[0]
+                val email = parts[1]
+                val name = parts[2]
+                val role = parts[3]
+                val village = parts[4]
+                val pass = parts[5]
+                if (email.equals(emailOrId, ignoreCase = true) || id.equals(emailOrId, ignoreCase = true)) {
+                    return Pair(WorkerUser(id, name, email, role, village), pass)
+                }
+            }
+        }
+        return null
     }
 
     private fun String.capitalizeWords(): String {

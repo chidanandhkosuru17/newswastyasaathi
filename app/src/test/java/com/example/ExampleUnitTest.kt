@@ -168,4 +168,37 @@ class ExampleUnitTest {
         val hiDanger = EmergencySafetyEngine.evaluate("Bachhe ki chhati andar dhas rahi hai chest indrawing")
         assertTrue("Must detect pediatric chest indrawing", hiDanger.isEmergency)
     }
+
+    @Test
+    fun testSupabaseConfiguration() {
+        assertEquals("chidanandhkosuru17's Project", com.example.data.supabase.SupabaseConfig.projectName)
+        assertEquals("nyaxlianwlofwwkasupl", com.example.data.supabase.SupabaseConfig.projectId)
+        assertTrue(com.example.data.supabase.SupabaseConfig.supabaseUrl.contains("nyaxlianwlofwwkasupl.supabase.co"))
+        assertTrue(com.example.data.supabase.SupabaseConfig.supabaseAnonKey.startsWith("sb_publishable_") || com.example.data.supabase.SupabaseConfig.supabaseAnonKey.isNotEmpty())
+    }
+
+    @Test
+    fun testSupabaseAuthSignUpAndValidation() {
+        // Email validation for signup
+        assertTrue(AuthRepository.isValidEmail("doctor.verma@chandrapuri.health"))
+        assertTrue(AuthRepository.isValidEmail("user@example.com"))
+        assertFalse(AuthRepository.isValidEmail("not-an-email"))
+        assertFalse(AuthRepository.isValidEmail(""))
+
+        // Password strength meter
+        assertEquals(AuthRepository.PasswordStrength.WEAK, AuthRepository.calculatePasswordStrength("123"))
+        assertEquals(AuthRepository.PasswordStrength.STRONG, AuthRepository.calculatePasswordStrength("HealthSecure@2026!"))
+
+        // Check translation keys for signup
+        for (lang in AppLanguage.values()) {
+            val signupTab = Translations.get("tab_sign_up", lang)
+            val signinTab = Translations.get("tab_sign_in", lang)
+            val fullName = Translations.get("full_name", lang)
+            val confirmPass = Translations.get("confirm_password", lang)
+            assertTrue("Signup tab must not be empty for ${lang.displayName}", signupTab.isNotEmpty())
+            assertTrue("Signin tab must not be empty for ${lang.displayName}", signinTab.isNotEmpty())
+            assertTrue("Full name label must not be empty for ${lang.displayName}", fullName.isNotEmpty())
+            assertTrue("Confirm password label must not be empty for ${lang.displayName}", confirmPass.isNotEmpty())
+        }
+    }
 }

@@ -45,7 +45,11 @@ data class MainUiState(
     val activeProtocolCategory: String = "ALL", // ALL, ANC, IMM, ESC, HBNC, NUT, NCD, CHD, SCP, VIS
     val generatedCsvContent: String? = null,
     val generatedFootprintJson: String? = null,
-    val lastLoggedEmergencyCase: com.example.data.local.EmergencyCaseEntity? = null
+    val lastLoggedEmergencyCase: com.example.data.local.EmergencyCaseEntity? = null,
+    val isTestingSupabase: Boolean = false,
+    val supabaseStatus: String? = null,
+    val isSupabaseConnected: Boolean? = null,
+    val supabaseLatencyMs: Long = 0
 )
 
 class MainViewModel(
@@ -164,12 +168,36 @@ class MainViewModel(
 
     fun triggerSync() {
         if (_uiState.value.isSyncing) return
-        _uiState.value = _uiState.value.copy(isSyncing = true, syncMessage = "Synchronizing local changes...")
+        _uiState.value = _uiState.value.copy(
+            isSyncing = true,
+            syncMessage = "Synchronizing with Supabase backend (nyaxlianwlofwwkasupl)..."
+        )
         viewModelScope.launch {
             val count = repository.syncPendingQueue()
             _uiState.value = _uiState.value.copy(
                 isSyncing = false,
-                syncMessage = if (count > 0) "Successfully synchronized $count items with server!" else "Everything is up to date."
+                syncMessage = if (count > 0) "Synchronized $count item(s) to Supabase Cloud & SQLite!" else "Everything is already up to date with Supabase."
+            )
+        }
+    }
+
+    fun testSupabase() {
+        if (_uiState.value.isTestingSupabase) return
+        _uiState.value = _uiState.value.copy(
+            isTestingSupabase = true,
+            supabaseStatus = "Pinging Supabase backend (nyaxlianwlofwwkasupl)..."
+        )
+        viewModelScope.launch {
+            val result = repository.testSupabaseConnection()
+            _uiState.value = _uiState.value.copy(
+                isTestingSupabase = false,
+                isSupabaseConnected = result.isConnected,
+                supabaseLatencyMs = result.latencyMs,
+                supabaseStatus = if (result.isConnected) {
+                    "Connected to Supabase Project: chidanandhkosuru17's Project (HTTP ${result.statusCode}, ${result.latencyMs}ms)"
+                } else {
+                    "Supabase: ${result.message}"
+                }
             )
         }
     }

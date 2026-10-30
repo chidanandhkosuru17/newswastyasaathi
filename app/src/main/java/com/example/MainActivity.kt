@@ -100,15 +100,21 @@ fun MainApp(
     }
 
     if (!isLoggedIn) {
-        // Initial Launch Screen: ID & Password Sign In
+        // Initial Launch Screen: Supabase Cloud & Offline Sign In / Sign Up
         SignInScreen(
             uiState = authUiState,
             currentLanguage = mainUiState.currentLanguage,
+            onTabSelected = { authViewModel.setSignUpMode(it) },
             onEmailOrIdChanged = { authViewModel.onEmailOrIdChanged(it) },
             onPasswordChanged = { authViewModel.onPasswordChanged(it) },
+            onConfirmPasswordChanged = { authViewModel.onConfirmPasswordChanged(it) },
+            onFullNameChanged = { authViewModel.onFullNameChanged(it) },
+            onRoleChanged = { authViewModel.onRoleChanged(it) },
+            onVillageChanged = { authViewModel.onVillageChanged(it) },
             onRememberMeChanged = { authViewModel.onRememberMeChanged(it) },
             onFillDemo = { authViewModel.fillDemoCredentials(it) },
             onSignIn = { authViewModel.signIn {} },
+            onSignUp = { authViewModel.signUp {} },
             onLanguageClick = { showLanguageDialog = true }
         )
     } else {
@@ -251,9 +257,14 @@ fun MainApp(
                             pendingSyncCount = pendingSyncCount,
                             syncQueueItems = pendingSyncItems,
                             syncMessage = mainUiState.syncMessage,
+                            isTestingSupabase = mainUiState.isTestingSupabase,
+                            supabaseStatus = mainUiState.supabaseStatus,
+                            isSupabaseConnected = mainUiState.isSupabaseConnected,
+                            supabaseLatencyMs = mainUiState.supabaseLatencyMs,
                             onLanguageSelected = { mainViewModel.setLanguage(it) },
                             onToggleNetworkMode = { mainViewModel.toggleNetworkMode() },
                             onTriggerSync = { mainViewModel.triggerSync() },
+                            onTestSupabase = { mainViewModel.testSupabase() },
                             onSignOut = { authViewModel.signOut() }
                         )
                     }

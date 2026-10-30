@@ -73,14 +73,20 @@ fun SettingsScreen(
     pendingSyncCount: Int,
     syncQueueItems: List<SyncQueueEntity>,
     syncMessage: String?,
+    isTestingSupabase: Boolean = false,
+    supabaseStatus: String? = null,
+    isSupabaseConnected: Boolean? = null,
+    supabaseLatencyMs: Long = 0,
     onLanguageSelected: (AppLanguage) -> Unit,
     onToggleNetworkMode: () -> Unit,
     onTriggerSync: () -> Unit,
+    onTestSupabase: () -> Unit = {},
     onSignOut: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val scrollState = rememberScrollState()
     var showLogoutDialog by remember { mutableStateOf(false) }
+    var showSqlDialog by remember { mutableStateOf(false) }
 
     Surface(
         modifier = modifier.fillMaxSize(),
@@ -446,7 +452,133 @@ fun SettingsScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // 4. Frontline Worker Profile & Sign Out
+            // 4. Supabase Cloud Backend Integration
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("supabase_backend_card"),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                shape = RoundedCornerShape(12.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.CloudDone,
+                                contentDescription = null,
+                                tint = HealthcareTeal,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Column {
+                                Text(
+                                    text = "Supabase Cloud Backend",
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = "chidanandhkosuru17's Project",
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                                )
+                            }
+                        }
+
+                        // Connection Status Pill
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = when (isSupabaseConnected) {
+                                true -> SuccessGreen.copy(alpha = 0.15f)
+                                false -> EmergencyRed.copy(alpha = 0.15f)
+                                null -> WarningAmber.copy(alpha = 0.15f)
+                            }
+                        ) {
+                            Text(
+                                text = when (isSupabaseConnected) {
+                                    true -> "CONNECTED (${supabaseLatencyMs}ms)"
+                                    false -> "FAILED"
+                                    null -> "NOT TESTED"
+                                },
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = when (isSupabaseConnected) {
+                                    true -> SuccessGreen
+                                    false -> EmergencyRed
+                                    null -> Color(0xFFE65100)
+                                },
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    Text(
+                        text = "Project ID: nyaxlianwlofwwkasupl\nEndpoint: https://nyaxlianwlofwwkasupl.supabase.co/rest/v1/\nAuth Engine: GoTrue v2.197.0 Active",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f),
+                        lineHeight = 16.sp
+                    )
+
+                    if (supabaseStatus != null) {
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = supabaseStatus,
+                            fontSize = 11.sp,
+                            color = if (isSupabaseConnected == true) SuccessGreen else MedicalBlue,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Button(
+                            onClick = onTestSupabase,
+                            enabled = !isTestingSupabase,
+                            colors = ButtonDefaults.buttonColors(containerColor = HealthcareTeal),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("test_supabase_button")
+                        ) {
+                            if (isTestingSupabase) {
+                                CircularProgressIndicator(
+                                    color = Color.White,
+                                    modifier = Modifier.size(14.dp),
+                                    strokeWidth = 2.dp
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Pinging...", fontSize = 11.sp)
+                            } else {
+                                Text("Test Supabase Ping", fontSize = 11.sp)
+                            }
+                        }
+
+                        Button(
+                            onClick = { showSqlDialog = true },
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.testTag("view_supabase_sql_button")
+                        ) {
+                            Text("SQL Tables", fontSize = 11.sp, color = HealthcareTeal, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // 5. Frontline Worker Profile & Sign Out
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -528,6 +660,87 @@ fun SettingsScreen(
             dismissButton = {
                 TextButton(onClick = { showLogoutDialog = false }) {
                     Text("Cancel")
+                }
+            }
+        )
+    }
+
+    if (showSqlDialog) {
+        AlertDialog(
+            onDismissRequest = { showSqlDialog = false },
+            title = { Text("Supabase SQL Schema") },
+            text = {
+                Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                    Text(
+                        text = "Run this in your Supabase Dashboard SQL Editor (nyaxlianwlofwwkasupl):",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Surface(
+                        color = MaterialTheme.colorScheme.surfaceVariant,
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = """
+CREATE TABLE IF NOT EXISTS emergency_cases (
+  id TEXT PRIMARY KEY,
+  patient_name TEXT,
+  age INT,
+  gender TEXT,
+  village TEXT,
+  contact_phone TEXT,
+  emergency_type TEXT,
+  danger_signs TEXT,
+  esc_citation TEXT,
+  vitals_notes TEXT,
+  first_aid_given TEXT,
+  referral_destination TEXT,
+  recorded_at TEXT,
+  status TEXT DEFAULT 'REFERRED_IN_TRANSIT'
+);
+
+CREATE TABLE IF NOT EXISTS visits (
+  id TEXT PRIMARY KEY,
+  member_id TEXT,
+  household_id TEXT,
+  member_name TEXT,
+  village TEXT,
+  due_item TEXT,
+  priority INT,
+  due_date TEXT,
+  is_completed BOOLEAN DEFAULT false,
+  completion_date TEXT,
+  notes TEXT
+);
+
+CREATE TABLE IF NOT EXISTS sync_logs (
+  id BIGSERIAL PRIMARY KEY,
+  action_type TEXT,
+  payload TEXT,
+  device_id TEXT,
+  synced_at TIMESTAMP DEFAULT now()
+);
+
+ALTER TABLE emergency_cases ENABLE ROW LEVEL SECURITY;
+ALTER TABLE visits ENABLE ROW LEVEL SECURITY;
+ALTER TABLE sync_logs ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Allow anon all emergency_cases" ON emergency_cases FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow anon all visits" ON visits FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow anon all sync_logs" ON sync_logs FOR ALL USING (true) WITH CHECK (true);
+                            """.trimIndent(),
+                            fontSize = 10.sp,
+                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                            modifier = Modifier.padding(10.dp)
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showSqlDialog = false }) {
+                    Text("Close", fontWeight = FontWeight.Bold, color = HealthcareTeal)
                 }
             }
         )

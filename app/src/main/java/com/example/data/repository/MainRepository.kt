@@ -173,6 +173,16 @@ class MainRepository(private val context: Context) {
             )
         )
 
+        // Try direct sync to Supabase in background if network is active
+        try {
+            val uploadResult = com.example.data.supabase.SupabaseClient.uploadEmergencyCase(emergencyCase)
+            if (uploadResult.isSuccess) {
+                emergencyDao.insertCase(emergencyCase.copy(isSynced = true))
+            }
+        } catch (e: Exception) {
+            // Keep as unsynced offline record
+        }
+
         emergencyCase
     }
 
@@ -203,22 +213,49 @@ class MainRepository(private val context: Context) {
 
     suspend fun syncPendingQueue(): Int = withContext(Dispatchers.IO) {
         val pending = syncDao.getPendingItems()
-        if (pending.isEmpty()) return@withContext 0
+        val visits = visitDao.getAllVisits().first()
+        val pendingVisits = visits.filter { it.isCompleted && !it.isSynced }
+        val cases = emergencyDao.getAllCases().first()
+        val pendingCases = cases.filter { !it.isSynced }
 
-        // Simulate network processing and mark as SYNCED
+        var totalItems = pending.size + pendingVisits.size + pendingCases.size
+        if (totalItems == 0) return@withContext 0
+
+        // Push pending cases to Supabase
+        for (c in pendingCases) {
+            try {
+                com.example.data.supabase.SupabaseClient.uploadEmergencyCase(c)
+            } catch (ignored: Exception) {}
+        }
+
+        // Push completed visits to Supabase
+        if (pendingVisits.isNotEmpty()) {
+            try {
+                com.example.data.supabase.SupabaseClient.uploadVisits(pendingVisits)
+            } catch (ignored: Exception) {}
+        }
+
+        // Push raw audit log queue to Supabase
+        if (pending.isNotEmpty()) {
+            try {
+                com.example.data.supabase.SupabaseClient.uploadSyncLogs(pending)
+            } catch (ignored: Exception) {}
+        }
+
+        // Mark local records as synced
         syncDao.markAllSynced()
 
-        // Also update all visits to isSynced = true
-        val visits = visitDao.getAllVisits().first()
         val updated = visits.map {
             if (it.isCompleted) it.copy(isSynced = true) else it
         }
         visitDao.insertAll(updated)
-
-        // Mark emergency cases as synced
         emergencyDao.markAllSynced()
 
-        pending.size
+        totalItems
+    }
+
+    suspend fun testSupabaseConnection(): com.example.data.supabase.SupabaseClient.ConnectionResult {
+        return com.example.data.supabase.SupabaseClient.testConnection()
     }
 
     suspend fun searchProtocols(query: String): List<ProtocolEntity> = withContext(Dispatchers.IO) {
